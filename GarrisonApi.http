@@ -1,0 +1,6 @@
+@GarrisonApi_HostAddress = http://localhost:5277
+
+GET {{GarrisonApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
