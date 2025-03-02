@@ -14,12 +14,16 @@ internal class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.Configuration.AddUserSecrets<Program>();
 
-
         if (builder.Configuration.GetConnectionString("Default") is null)
         {
             Console.WriteLine("Please set the connection string in user secrets");
             Console.WriteLine("Usage: dotnet user-secrets set ConnectionStrings:Default \"server=....\"");
             return;
+        }
+
+        if (builder.Configuration.GetValue<string>("AssetDirectory") is null)
+        {
+            Console.WriteLine("Please add 'AssetDirectory' to the configuration");
         }
         
         ConfigureServices(builder);
@@ -38,6 +42,7 @@ internal class Program
 
     private static void ConfigureServices(IServiceCollection services, ConfigurationManager config)
     {
+        services.AddSingleton<IFileManager, FileManager>(_ => new FileManager(config.GetValue<string>("AssetDirectory")!));
         services.AddDbContext<GarrisonContext>(options => options.UseMySQL(config.GetConnectionString("Default")!));
         services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
         services.AddOpenApi();
