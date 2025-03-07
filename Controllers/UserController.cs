@@ -17,7 +17,8 @@ public class UserController(GarrisonContext dbContext) : ControllerBase
     {
         if (_dbContext.Users.Find((uint)id) is User user)
             return new Dictionary<string, object> {
-                ["id"] = user.Id
+                ["id"] = user.Id,
+                ["name"] = user.UserName
             };
         else
             return NotFound();
