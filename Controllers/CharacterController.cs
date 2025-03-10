@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Tasks;
 using Garrison.Lib;
 using Garrison.Lib.Models;
 using ImageMagick;
@@ -42,99 +43,51 @@ public class CharacterController(GarrisonContext dbContext, IFileManager fileMan
         }
     }
 
-    [HttpGet("foundry/{foundryId}/json")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesErrorResponseType(typeof(ProblemDetails))]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public ActionResult<JsonDocument> GetJson(string foundryId)
-    {
-        try
-        {
-            if (GetCharacter(foundryId, nameof(foundryId)) is Character @char
-                && @char.Data is string json)
-                return JsonDocument.Parse(json);
-            else
-                return NotFound();
-        } catch (UserError error)
-        {
-            return BadRequest(error.ProblemDetails);
-        }
-    }
+    [Authorize]
+    [HttpPost("foundry/{foundryId}/json")]
+    public async Task<IActionResult> SetJson(string foundryId) => await SetFile(foundryId, IFileManager.FileType.Json);
 
     [Authorize]
     [HttpPut("foundry/{foundryId}/token")]
-    public async Task<IActionResult> SetToken(string foundryId)
-    {
-        if (Request.ContentLength > 2*1024*1024)
-            return BadRequest("Images must be <= 2MB");
-        if (GetCharacter(foundryId, nameof(foundryId)) is not Character @char)
-            return NotFound("No such character");
-
-        await SaveImage(@char, IFileManager.FileType.Token);
-
-        return Ok();
-    }
+    public async Task<IActionResult> SetToken(string foundryId) => await SetFile(foundryId, IFileManager.FileType.Token);
 
     [Authorize]
     [HttpPut("foundry/{foundryId}/portrait")]
-    public async Task<IActionResult> SetPortrait(string foundryId)
-    {
-        if (Request.ContentLength > 5*1024*1024)
-            return BadRequest("Images must be <= 5MB");
-        if (GetCharacter(foundryId, nameof(foundryId)) is not Character @char)
-            return NotFound("No such character");
+    public async Task<IActionResult> SetPortrait(string foundryId) => await SetFile(foundryId, IFileManager.FileType.Portrait);
 
-        await SaveImage(@char, IFileManager.FileType.Portrait);
-
-        return Ok();
-    }
+    [Authorize]
+    [HttpGet("foundry/{foundryId}/json")]
+    public IActionResult GetJson(string foundryId) => GetFile(foundryId, IFileManager.FileType.Json);
 
     [Authorize]
     [HttpGet("foundry/{foundryId}/token")]
-    public IActionResult GetToken(string foundryId)
-    {
-        if (GetCharacter(foundryId, nameof(foundryId)) is not Character @char)
-            return NotFound("No such character");
-
-        if (_fileManager.TryGetFile(@char, IFileManager.FileType.Token, out var file))
-            return File(file.OpenRead(), "image/webp");
-
-        return NotFound("No token found");
-    }
+    public IActionResult GetToken(string foundryId) => GetFile(foundryId, IFileManager.FileType.Token);
 
     [Authorize]
     [HttpGet("foundry/{foundryId}/portrait")]
-    public IActionResult GetPortrait(string foundryId)
+    public IActionResult GetPortrait(string foundryId) => GetFile(foundryId, IFileManager.FileType.Portrait);
+
+    private IActionResult GetFile(string foundryId, IFileManager.FileType type)
+    {
+        if (GetCharacter(foundryId, nameof(foundryId)) is not Character @char)
+            return NotFound("No such character");
+        
+        if (!_fileManager.TryGetFile(@char, type, out var file))
+            return NotFound($"No {type} stored for character");
+
+        return File(file.OpenRead(), type.GetMimeType());
+    }
+
+    private async Task<IActionResult> SetFile(string foundryId, IFileManager.FileType type)
     {
         if (GetCharacter(foundryId, nameof(foundryId)) is not Character @char)
             return NotFound("No such character");
 
-        if (_fileManager.TryGetFile(@char, IFileManager.FileType.Portrait, out var file))
-            return File(file.OpenRead(), "image/webp");
-
-        return NotFound("No portrait found");
+        await _fileManager.SaveFile(@char, type, Request.Body, Request.ContentLength);
+        return Ok();
     }
 
-    private async Task SaveImage(Character @char, IFileManager.FileType type)
-    {
-        var bytes = new byte[Convert.ToInt32(Request.ContentLength)];
-        await Request.Body.ReadExactlyAsync(bytes);
-
-        MagickImage image = new(bytes, MagickFormat.Unknown);
-        MagickGeometry size = type switch
-        {
-            IFileManager.FileType.Token => new(400, 400) { FillArea = true },
-            IFileManager.FileType.Portrait => new() { Width = 1024 },
-            _ => throw new NotImplementedException()
-        };
-
-        image.Format = MagickFormat.WebP;
-        image.Resize(size);
-
-        await _fileManager.SaveFile(@char, type, image.ToByteArray());
-
-        return;
-    }
+    private async Task SaveFile(Character @char, IFileManager.FileType type) => await _fileManager.SaveFile(@char, type, Request.Body, Request.ContentLength);
 
     private Character? GetCharacterFromId(uint id) => _dbContext.Characters.Find(id);
     
